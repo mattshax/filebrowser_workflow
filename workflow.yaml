@@ -107,6 +107,10 @@ jobs:
         type: compute-clusters
         label: Service Host
         autoselect: true
+        provider:
+          - aws-slurm
+          - google-slurm
+          - azure-slurm
         include-workspace: false
         tooltip: Resource to host the service
       rundir:
