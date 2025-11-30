@@ -51,7 +51,7 @@ jobs:
           cat > ${{ inputs.rundir }}/docker-compose.yml << YAML
             services:
               filebrowser:
-                image: filebrowser/filebrowser:latest
+                image: filebrowser/filebrowser:v2.47.0
                 environment:
                   FB_BASEURL: ${FB_BASEURL}
                   FB_ADDRESS: "0.0.0.0"
