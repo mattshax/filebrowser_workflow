@@ -1,0 +1,115 @@
+permissions:
+  - '*'
+sessions:
+  session:
+    useTLS: false
+    redirect: true
+    useCustomDomain: false
+    prompt-for-name:
+      default: filebrowser
+jobs:
+  prep:
+    steps:
+      - name: Get PW user
+        run: |
+          echo "PW_USER=$PW_USER" | tee -a $OUTPUTS
+      - name: Get service port
+        ssh:
+          remoteHost: ${{ inputs.resource.ip }}
+        run: |
+          set -x
+          mkdir -p ${{ inputs.rundir }}
+          cd ${{ inputs.rundir }}
+          PW_USER="${{ needs.prep.outputs.PW_USER }}"
+          echo $PW_USER > PW_USER
+          availablePort=$(pw agent open-port)
+          echo availablePort: ${availablePort}
+
+          # create the data directories with needed permissions
+          mkdir -p database config data
+          chown 1000:1000 database config data -Rf
+
+          if [ -z "${availablePort}" ]; then
+              echo "$(date) ERROR: No port found. Exiting job"
+              exit 1
+          fi
+          echo ${availablePort} > SERVICEPORT
+  filebrowser:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    needs:
+      - prep
+    steps:
+      - name: Write docker compose file
+        run: |
+          set -x
+          cd ${{ inputs.rundir }}
+
+          SERVICEPORT=$(cat SERVICEPORT)
+          FB_BASEURL="/me/sessions/$(cat PW_USER)/${{ sessions.session }}"
+
+          cat > ${{ inputs.rundir }}/docker-compose.yml << YAML
+            services:
+              filebrowser:
+                image: filebrowser/filebrowser:latest
+                environment:
+                  FB_BASEURL: ${FB_BASEURL}
+                  FB_ADDRESS: "0.0.0.0"
+                  FB_LOG: stdout
+                  FB_AUTH_METHOD: json
+                volumes:
+                  - ./data:/srv
+                  - ./config:/config
+                  - ./database:/database
+                ports:
+                  - "${SERVICEPORT}:80"
+          YAML
+      - name: Run filebrowser
+        run: |
+          set -x
+          cd ${{ inputs.rundir }}
+          docker compose down
+          docker compose up
+  create_session:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
+    needs:
+      - prep
+    steps:
+      - name: Get Hostname & Port
+        early-cancel: any-job-failed
+        run: |
+          set -x
+          cd ${{ inputs.rundir }}
+          echo "target_hostname=$(hostname)" | tee -a $OUTPUTS
+          echo "SESSION_PORT=$(cat SERVICEPORT)" | tee -a $OUTPUTS
+      - name: Wait for Server To Start
+        early-cancel: any-job-failed
+        env:
+          remote_host: ${{ needs.create_session.outputs.target_hostname }}
+          remote_port: ${{ needs.create_session.outputs.SESSION_PORT }}
+        retry:
+          interval: 3s
+          max-retries: 1000
+          timeout: 5s
+        run: curl --fail --silent "http://${remote_host}:${remote_port}" >/dev/null 2>&1
+      - name: Update Session
+        uses: parallelworks/update-session
+        with:
+          remotePort: ${{ needs.create_session.outputs.SESSION_PORT }}
+          target: ${{ inputs.resource.id }}
+          name: ${{ sessions.session }}
+          remoteHost: ${{ needs.create_session.outputs.target_hostname }}
+'on':
+  execute:
+    inputs:
+      resource:
+        type: compute-clusters
+        label: Service Host
+        autoselect: true
+        include-workspace: false
+        tooltip: Resource to host the service
+      rundir:
+        label: Run Directory
+        default: ~/filebrowser
+        type: string
