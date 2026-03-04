@@ -69,6 +69,14 @@ jobs:
           set -x
           cd ${{ inputs.rundir }}
           docker compose down
+
+          # Initialize DB with noauth if it doesn't exist yet
+          if [ ! -f database/filebrowser.db ]; then
+            docker compose run --rm filebrowser config init --database /database/filebrowser.db
+            docker compose run --rm filebrowser config set --auth.method=noauth --database /database/filebrowser.db
+            docker compose run --rm filebrowser users add admin adminpassword1 --perm.admin --database /database/filebrowser.db
+          fi
+
           docker compose up
   create_session:
     ssh:
