@@ -46,7 +46,7 @@ jobs:
           cd ${{ inputs.rundir }}
 
           SERVICEPORT=$(cat SERVICEPORT)
-          FB_BASE_URL="/me/sessions/$(cat PW_USER)/${{ sessions.session }}"
+          FB_BASE_URL="/me/session/$(cat PW_USER)/${{ sessions.session }}"
 
           cat > ${{ inputs.rundir }}/docker-compose.yml << YAML
             services:
